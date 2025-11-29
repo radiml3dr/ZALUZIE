@@ -1,13 +1,24 @@
-// ESP8266 + CC1101 OOK transmitter with RadioLib
+// ESP8266 + CC1101 OOK transmitter with RadioLib + OLED Display
 // Uses direct mode and precise GPIO toggling with interrupts off
 // to avoid WiFi/scheduler jitter.
+// OLED: SSD1306 0.96" 128x64px on I2C (SDA=D4/GPIO2, SCL=D5/GPIO14)
 
 #include <Arduino.h>
 #include <SPI.h>
 #include <RadioLib.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include <ESP8266WiFi.h>
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
+
+// ---------- OLED Display Setup ----------
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+#define SCREEN_ADDRESS 0x3C  // I2C address (0x3C or 0x3D)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // ---------- WiFi Stuff ----------
 const char* config_ssid = "HONZUV_OVLADAC";
@@ -260,14 +271,31 @@ void setup() {
   Serial.begin(115200);
   delay(50);
 
+  // Initialize OLED display
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    // Continue anyway, just without display
+  } else {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println(F("ZALUZIE Controller"));
+    display.println(F("Initializing..."));
+    display.display();
+  }
+
   Serial.println(F("Starting WiFi"));
 
   WiFiManager wifiManager;
 
   if (!wifiManager.autoConnect(config_ssid,config_password)) {
     Serial.println("failed to connect and hit timeout");
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.println(F("WiFi: FAILED"));
+    display.display();
     delay(3000);
-    //reset and try again, or maybe put it to deep sleep
     ESP.reset();
     delay(5000);
   }  
@@ -288,7 +316,18 @@ void setup() {
   WiFi.softAPdisconnect(true);
 
   Serial.println("Local IP:");
-  Serial.println(WiFi.localIP());  
+  Serial.println(WiFi.localIP());
+  
+  // Display WiFi info on OLED
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println(F("ZALUZIE Controller"));
+  display.println(F("WiFi: Connected"));
+  display.print(F("IP: "));
+  display.println(WiFi.localIP());
+  display.display();
 
   Serial.println(F("ESP8266 CC1101 OOK direct TX"));
 
@@ -299,14 +338,48 @@ void setup() {
   int16_t state = radio.begin(433.92);
   if (state != RADIOLIB_ERR_NONE) {
     Serial.printf("radio.begin failed: %d\n", state);
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.println(F("Radio: FAILED"));
+    display.display();
     while (true) delay(1000);
   }
 
   radio.setOOK(true);
   radio.setOutputPower(10);
   Serial.println(F("Radio ready."));
+  
+  // Final display setup
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println(F("ZALUZIE Controller"));
+  display.println(F("Ready"));
+  display.print(F("IP: "));
+  display.println(WiFi.localIP());
+  display.display();
 }
+
+unsigned long lastDisplayUpdate = 0;
 
 void loop() {
   server->handleClient();
+  
+  // Update OLED display every 5 seconds
+  if (millis() - lastDisplayUpdate > 5000) {
+    lastDisplayUpdate = millis();
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println(F("ZALUZIE Controller"));
+    display.println(F("Status: OK"));
+    display.print(F("IP: "));
+    display.println(WiFi.localIP());
+    display.print(F("RSSI: "));
+    display.print(WiFi.RSSI());
+    display.println(F(" dBm"));
+    display.display();
+  }
 }
