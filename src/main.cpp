@@ -8,6 +8,9 @@
 #include <ESP8266WiFi.h>
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
+// OLED
+#include <Wire.h>
+#include <Adafruit_SSD1306.h>
 
 // ---------- WiFi Stuff ----------
 const char* config_ssid = "HONZUV_OVLADAC";
@@ -15,6 +18,18 @@ const char* config_password = "lednicka7";
 
 WiFiClient espClient;
 std::unique_ptr<ESP8266WebServer> server;
+
+// ---------- OLED Display (HW-364A) ----------
+#define SCREEN_WIDTH 128          // OLED display width, in pixels
+#define SCREEN_HEIGHT 64          // OLED display height, in pixels
+#define OLED_RESET -1             // Reset pin (not used)
+#define SCREEN_ADDRESS 0x3C       // I2C address of display
+// HW-364A integrated display pins (fixed on board)
+#define OLED_SDA 14               // D6 / GPIO14
+#define OLED_SCL 12               // D5 / GPIO12
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
 
 // ---------- Pin mapping (NodeMCU style) ----------
 static const uint8_t PIN_GDO0 = 4;   // D2 -> GDO0 (OOK data)
@@ -256,9 +271,53 @@ void handlePause() {
   server->send(200, "text/plain", "OK");
 }
 
+// ---------- OLED helpers ----------
+void displayBootMessage() {
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("ZALUZIE");
+  display.setTextSize(1);
+  display.println("CC1101 OOK");
+  display.println("");
+  display.println("Initializing...");
+  display.display();
+}
+
+void displayWiFiStatus() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  
+  display.println("WiFi Status:");
+  if (WiFi.status() == WL_CONNECTED) {
+    display.println("Connected");
+    display.println("");
+    display.print("SSID: "); display.println(WiFi.SSID());
+    display.print("IP: "); display.println(WiFi.localIP().toString());
+    display.print("RSSI: "); display.print(WiFi.RSSI()); display.println(" dBm");
+  } else {
+    display.println("Disconnected");
+    display.println("");
+    display.println("Waiting for AP...");
+  }
+  display.display();
+}
+
 void setup() {
   Serial.begin(115200);
   delay(50);
+
+  // Initialize I2C and OLED (HW-364A uses fixed pins SDA=GPIO14, SCL=GPIO12)
+  Wire.begin(OLED_SDA, OLED_SCL);
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("SSD1306 allocation failed"));
+  } else {
+    Serial.println(F("OLED initialized"));
+  }
+  displayBootMessage();
 
   Serial.println(F("Starting WiFi"));
 
